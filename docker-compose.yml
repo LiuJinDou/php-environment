@@ -1,0 +1,120 @@
+version: '3.5'
+# 网络配置
+networks:
+  backend:
+    driver: ${NETWORKS_DRIVER}
+
+# 服务容器配置
+services:
+  php:
+    build: ./php7.4
+    restart: always
+    ports:
+      - "9000:9000"
+    expose:
+      - 9000
+    stdin_open: true
+    tty: true
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ${CODE_PATH_HOST}:/www/wwwroot
+      - ./php7.4/php:/usr/local/etc/php
+      #- "./php7.4/etc:/usr/local/etc" #php配置文件夹，可选
+      #- "./php7.4/log:/var/log/php" #log，可选
+    networks:
+      -  backend
+  nginx:
+    build: ./nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:433"
+    depends_on:
+      - "php"
+    volumes:
+      - ./nginx/nginx:/etc/nginx
+      - ./nginx/log:/var/log
+      - ${CODE_PATH_HOST}:/www/wwwroot
+    networks:
+      -  backend
+
+  mysql:
+    build:
+      context: ./mysql
+    environment:
+      - TZ=${TZ}
+      - MYSQL_USER=${MYSQL_USERNAME}                  # 设置 Mysql 用户名称
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}              # 设置 Mysql 用户密码
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}    # 设置 Mysql root 用户密码
+    privileged: true
+    volumes:
+      - ${DATA_PATH_HOST}/mysql:/var/lib/mysql        # 引用 .env 配置中 DATA_PATH_HOST 变量，将宿主机上存放 Mysql 数据的目录挂载到容器中 /var/lib/mysql 目录
+    ports:
+      - "${MYSQL_PORT}:3306"                          # 设置容器3306端口映射指定宿主机端口
+    networks:
+      - backend
+    restart: always
+
+  redis:
+    build:
+      context: ./redis
+    environment:
+      - TZ=${TZ}
+    privileged: true
+    volumes:
+      - ${DATA_PATH_HOST}/redis:/data                 # 引用 .env 配置中 DATA_PATH_HOST 变量，将宿主机上存放 Redis 数据的目录挂载到容器中 /data 目录
+    ports:
+      - "${REDIS_PORT}:6379"                          # 设置容器6379端口映射指定宿主机端口
+    networks:
+      - backend
+    restart: always
+
+  rabbitmq:
+    build:
+      context: ./rabbitmq
+    ports:
+      - "5672:5672" # AMQP 协议端口
+      - "${RABBITMQ_PORT}:15672" # RabbitMQ 管理界面端口
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_MANAGE_USERNAME} # RabbitMQ 默认用户名
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_MANAGE_PASSWORD} # RabbitMQ 默认用户密码
+    networks:
+      - backend
+    restart: always
+
+  mysql-manage:
+    build:
+      context: ./mysql-manage
+    environment:
+      - TZ=${TZ}
+      - PMA_ARBITRARY=1
+      - MYSQL_USER=${MYSQL_MANAGE_USERNAME}               # 设置连接的 Mysql 服务用户名称
+      - MYSQL_PASSWORD=${MYSQL_MANAGE_PASSWORD}           # 设置连接的 Mysql 服务用户密码
+      - MYSQL_ROOT_PASSWORD=${MYSQL_MANAGE_ROOT_PASSWORD} # 设置连接的 Mysql 服务 root 用户密码
+      - PMA_HOST=${MYSQL_MANAGE_CONNECT_HOST}             # 设置连接的 Mysql 服务 host，可以是 Mysql 服务容器的名称，也可以是 Mysql 服务容器的 ip 地址
+      - PMA_PORT=${MYSQL_MANAGE_CONNECT_PORT}             # 设置连接的 Mysql 服务端口号
+    ports:
+      - "${MYSQL_MANAGE_PORT}:80"                         # 设置容器80端口映射指定宿主机端口，用于宿主机访问可视化web
+    depends_on:                                           # 依赖容器
+      - mysql                                             # 在 Mysql 服务容器启动后启动
+    networks:
+      - backend
+    restart: always
+
+  redis-manage:
+    build:
+      context: ./redis-manage
+    environment:
+      - TZ=${TZ}
+      - ADMIN_USER=${REDIS_MANAGE_USERNAME}           # 设置 Redis 可视化管理的用户名称
+      - ADMIN_PASS=${REDIS_MANAGE_PASSWORD}           # 设置 Redis 可视化管理的用户密码
+      - REDIS_1_HOST=${REDIS_MANAGE_CONNECT_HOST}     # 设置连接的 Redis 服务 host，可以是 Redis 服务容器的名称，也可以是 Redis 服务容器的 ip 地址
+      - REDIS_1_PORT=${REDIS_MANAGE_CONNECT_PORT}     # 设置连接的 Redis 服务端口号
+    ports:
+      - "${REDIS_MANAGE_PORT}:80"                     # 设置容器80端口映射指定宿主机端口，用于宿主机访问可视化web
+    depends_on:                                       # 依赖容器
+      - redis                                         # 在 Redis 服务容器启动后启动
+    networks:
+      - backend
+    restart: always
